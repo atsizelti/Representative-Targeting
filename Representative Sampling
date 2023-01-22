@@ -1,0 +1,145 @@
+def var_names(activity_level1, activity_level2, activity_level3, 
+              gen_pop_filename, count_column_name, desired_sample_size, 
+              relevant_variable_1, relevant_variable_2, relevant_variable_3):
+    
+    #find the ratio
+    ratio= desired_sample_size/sum(gen_pop_filename[count_column_name])
+        
+    #determine the needed sample size for each unique category combination
+    gen_pop_filename['adjusted_target_sample']= round(gen_pop_filename[count_column_name]*ratio)
+    gen_pop_filename['adjusted_target_sample']= gen_pop_filename['adjusted_target_sample'].astype(int)
+    
+    #group the different activity level datasets according to the relevant variables
+    level1_grouped= activity_level1.groupby([str(relevant_variable_1), str(relevant_variable_2), 
+                                                   str(relevant_variable_3)]).size().reset_index(name="Count_var1_level1")
+    level2_grouped= activity_level2.groupby([str(relevant_variable_1), str(relevant_variable_2), 
+                                                   str(relevant_variable_3)]).size().reset_index(name="Count_var2_level2")
+    level3_grouped= activity_level3.groupby([str(relevant_variable_1), str(relevant_variable_2), 
+                                                   str(relevant_variable_3)]).size().reset_index(name="Count_var3_level3")
+    
+    
+    #prepatation of the table to calculate the number needed for representative sampling
+    level1_count= []
+    level2_count= []
+    level3_count= []
+
+    for i in range(len(gen_pop_filename.groupby([relevant_variable_1]).size().reset_index(name="Count_var1_genpop"))):
+        for j in range(len(gen_pop_filename.groupby([relevant_variable_2]).size().reset_index(name="Count_var2_genpop"))):
+            for k in range(len(gen_pop_filename.groupby([relevant_variable_3]).size().reset_index(name="Count_var3_genpop"))):
+
+                len_level1= len(activity_level1.query(f'{relevant_variable_1}== {i+1} and {relevant_variable_2}== {j+1} and {relevant_variable_3}== {k+1}'))
+                len_level2= len(activity_level2.query(f'{relevant_variable_1}== {i+1} and {relevant_variable_2}== {j+1} and {relevant_variable_3}== {k+1}'))
+                len_level3= len(activity_level3.query(f'{relevant_variable_1}== {i+1} and {relevant_variable_2}== {j+1} and {relevant_variable_3}== {k+1}'))
+
+
+                if len_level1 <1:
+                    level1_count.append(0)
+                else:
+                    level1_count.append(len_level1)
+
+                if len_level2 <1:
+                    level2_count.append(0)
+                else:
+                    level2_count.append(len_level2)
+
+                if len_level3 <1:
+                    level3_count.append(0)
+                else:
+                    level3_count.append(len_level3)
+
+    level1_count_df = pd.DataFrame(level1_count)
+    level1_count_df.columns =['Level 1 Count']
+
+
+    level2_count_df = pd.DataFrame(level2_count)
+    level2_count_df.columns =['Level 2 Count']
+
+
+    level3_count_df = pd.DataFrame(level3_count)
+    level3_count_df.columns =['Level 3 Count']
+
+
+
+    resulting_table = pd.concat([gen_pop_filename, level1_count_df, level2_count_df, 
+                        level3_count_df], axis=1, join='inner')
+    
+    
+#Preparation of the representative sample. There are three different levels consisting of active, half active and non-active levels.
+#The algorithm looks for active, half active and non-active datasets respectively and creates the dataset with most possible active cases. 
+    target = []
+    
+    gen= resulting_table['adjusted_target_sample']
+    v1= resulting_table['Level 1 Count']
+    v2= resulting_table['Level 2 Count']
+    v3= resulting_table['Level 3 Count']
+
+    
+    for i in range(len(resulting_table)):
+        act1filt= (activity_level1.query(f'{relevant_variable_1} == {resulting_table[relevant_variable_1][i]} and {relevant_variable_2}== {resulting_table[relevant_variable_2][i]} and {relevant_variable_3}== {resulting_table[relevant_variable_3][i]}'))
+        act2filt= (activity_level2.query(f'{relevant_variable_1} == {resulting_table[relevant_variable_1][i]} and {relevant_variable_2}== {resulting_table[relevant_variable_2][i]} and {relevant_variable_3}== {resulting_table[relevant_variable_3][i]}')) 
+        act3filt= (activity_level3.query(f'{relevant_variable_1} == {resulting_table[relevant_variable_1][i]} and {relevant_variable_2}== {resulting_table[relevant_variable_2][i]} and {relevant_variable_3}== {resulting_table[relevant_variable_3][i]}')) 
+
+        if gen[i] < v1[i]:
+            if len(act1filt)==0:
+                pass
+            else:
+                target.append(act1filt.sample(n=(v1[i] - gen[i])))
+    
+    
+        if (gen[i] == v1[i]):
+            if len(act1filt) == 0:
+                pass
+            else:
+                target.append(act1filt)
+                       
+        if ((gen[i] > v1[i]) and (gen[i]-v1[i] < v2[i])):
+            if len(act1filt) == 0 or len(act2filt) == 0:
+                pass
+            else:
+                target.append(act1filt)
+                target.append(act2filt.sample(n=v2[i]-(gen[i]-v1[i])))
+                       
+        if ((gen[i] > v1[i]) and ((gen[i]-v1[i]) == v2[i])):
+            if len(act1filt) == 0 or len(act2filt) == 0:
+                pass
+            else:
+                target.append(act1filt)
+                target.append(act2filt)
+                       
+        if ((gen[i] > v1[i]) and ((gen[i]-v1[i]) > v2[i])):
+            if len(act1filt) == 0 or len(act2filt) == 0:
+                pass
+            else:
+                target.append(act1filt)
+                target.append(act2filt)
+                       
+        if ((gen[i] > v1[i]) and ((gen[i]-v1[i]) > v2[i]) and ((gen[i]- (v1[i] + v2[i])) < v3[i])):
+            if len(act1filt) == 0 or len(act2filt) == 0 or len(act3filt) ==0:
+                pass
+            else:
+                target.append(act1filt)
+                target.append(act2filt)
+                target.append(act3filt.sample(n=v3[i]-(gen[i]- (v1[i] + v2[i]))))
+                           
+        if ((gen[i] > v1[i]) and ((gen[i]-v1[i]) > v2[i]) and ((gen[i]- (v1[i] + v2[i])) == v3[i])):
+            if len(act1filt) == 0 or len(act2filt) == 0 or len(act3filt) ==0:
+                pass
+            else:
+                target.append(act1filt)
+                target.append(act2filt)            
+                target.append(act3filt)
+                       
+        if ((gen[i] > v1[i]) and ((gen[i]-v1[i]) > v2[i]) and ((gen[i]- (v1[i] + v2[i])) > v3[i])):
+            if len(act1filt) == 0 or len(act2filt) == 0 or len(act3filt) ==0:
+                pass
+            else:
+                target.append(act1filt)
+                target.append(act2filt)            
+                target.append(act3filt)
+                resulting_table['absent']= gen[i]- (v1[i] + v2[i])
+                       
+                   
+    target_df= pd.DataFrame(target)
+    target_df.columns = [''] * len(target_df.columns)
+
+    print((target))
